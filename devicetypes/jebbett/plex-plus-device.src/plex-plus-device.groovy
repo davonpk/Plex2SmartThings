@@ -2,6 +2,7 @@
  *  Plex Plus Device
  *
  *  Copyright 2016 Jake Tebbett (jebbett)
+ *  Modified by Anthony S. (@tonesto7)
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -12,21 +13,24 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  *
- * 
+ *
  */
 
 metadata {
-	definition (name: "Plex Plus Device", namespace: "jebbett", author: "jebbett") {
-	capability "musicPlayer"
+    definition (name: "Plex Plus Device", namespace: "jebbett", author: "jebbett", mnmn: "SmartThings", vid: "generic-music-player") {
+    capability "Music Player"
+    capability "Media Playback"
+    capability "Sensor"
+
     command "playbackType", ["string"]
 }
-	tiles(scale: 2) {
+    tiles(scale: 2) {
         multiAttributeTile(name:"status", type: "generic", width: 6, height: 4, canChangeIcon: false){
             tileAttribute ("device.status", key: "PRIMARY_CONTROL") {
-            attributeState "playing", label:'Playing', icon:"st.Electronics.electronics16", backgroundColor:"#79b821"
-            attributeState "stopped", label:'Stopped', icon:"st.Electronics.electronics16", backgroundColor:"#ffffff"
-            attributeState "paused", label:'Paused', icon:"st.Electronics.electronics16", backgroundColor:"#FFA500"
-        }        
+                attributeState "playing", label:'Playing', icon:"st.Electronics.electronics16", backgroundColor:"#79b821"
+                attributeState "stopped", label:'Stopped', icon:"st.Electronics.electronics16", backgroundColor:"#ffffff"
+                attributeState "paused", label:'Paused', icon:"st.Electronics.electronics16", backgroundColor:"#FFA500"
+            }
             tileAttribute ("device.playbackType", key: "SECONDARY_CONTROL") {
                 attributeState "playbackType", label:'${currentValue}'
             }
@@ -35,18 +39,30 @@ metadata {
 }
 
 def playbackType(type) {
-	sendEvent(name: "playbackType", value: type);
+    sendEvent(name: "playbackType", value: type);
 }
 
-def play() {	        
+def play() {
     sendEvent(name: "status", value: "playing");
+    sendEvent(name: "playbackStatus", value: "play", display: true, displayed: true)
 }
 
 def pause() {
     sendEvent(name: "status", value: "paused");
+    sendEvent(name: "playbackStatus", value: "pause", display: true, displayed: true)
 }
 
 def stop() {
     sendEvent(name: "status", value: "stopped");
-    
+    sendEvent(name: "playbackStatus", value: "stop", display: true, displayed: true)
+}
+
+def installed() {
+    log.info("${device?.displayName} Executing Installed...")
+    sendEvent(name: "status", value: "stopped", display: false, displayed: false);
+    sendEvent(name: "playbackStatus", value: "stop", display: false, displayed: false)
+}
+
+def updated() {
+    log.trace("${device?.displayName} Executing Updated()")
 }
