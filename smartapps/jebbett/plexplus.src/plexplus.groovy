@@ -52,14 +52,13 @@ def updated() {
 
 def initialize() {
     if(parent){
-           state.catcherRunning = false
+        state?.catcherRunning = false
         subscribe(playerDT, "status", PlayerDTCommandRecieved)
         logWriter("App settings: ${settings}\nLast Event:\n${parent.state.lastEvent}")
     } else{
-        if (!state.accessToken) {
+        if (!state?.accessToken) {
             createAccessToken()
         }
-
         logWriter("URL FOR USE IN PLEX2SMARTTHINGS EXE:\n"+
                 "<!ENTITY accessToken '${state.accessToken}'>\n"+
                 "<!ENTITY appId '${app.id}'>\n"+
@@ -90,39 +89,44 @@ preferences {
 }
 
 mappings {
-  path("/statechanged/:command") 	{ action: [ GET: "OnCommandRecieved" ] }
-  path("/appinfo") 					{ action: [ GET: "appInfoJson"]   }
-  path("/appinfo2") 				{ action: [ GET: "appInfoJson2"]   }
-  path("/appinfo3") 				{ action: [ GET: "appInfoJson3"]   }
-  path("/pwh") 						{ action: [ POST: "plexWebHookHandler"] }
+    path("/statechanged/:command")  { action: [ GET: "OnCommandRecieved" ] }
+    path("/appinfo")                { action: [ GET: "appInfoJson"]   }
+    path("/appinfo2")               { action: [ GET: "appInfoJson2"]   }
+    path("/appinfo3")               { action: [ GET: "appInfoJson3"]   }
+    path("/pwh")                    { action: [ POST: "plexWebHookHandler"] }
 }
 
 def mainMenu() {
-    parent ? childPage() : parentPage()
+    if(parent) {
+        return childPage()
+    } else {
+        try {
+            if (!state?.accessToken) { createAccessToken() }
+            return parentPage()
+        } catch (ex) {
+            log.error "Unable to create access token, OAuth has probably not been enabled: ${ex}"
+            paragraph "Unable to create access token, OAuth has probably not been enabled: ${ex}"
+        }
+    }
 }
 
 def parentPage() {
-
-    dynamicPage(name: "parentPage", title: "Rooms", install: true, uninstall: true, submitOnChange: true) {
-
+    return dynamicPage(name: "parentPage", title: "Rooms", install: true, uninstall: true, submitOnChange: true) {
         section {
             app(name: "childapp", appName: "PlexPlus", namespace: "jebbett", title: "Create New Room", multiple: true)
-            }
+        }
 
         section() {
             href(name: "instructions", title: "Instructions", required: false, page: "instructions", description: "how to link this app to Plex!")
         }
+
         section() {
             href(name: "pageDevice", title: "Create Virtual Device", required: false, page: "pageDevice", description: "create a virtual device here")
         }
 
-        try { if (!state.accessToken) {createAccessToken()} }
-        catch (Exception e) {log.info "Unable to create access token, OAuth has probably not been enabled: $e"}
-
-
         // Enables logging debug only when enabled
         section(title: "ADVANCED") {
-               paragraph "If you experiencing issues please enable logging to help troubleshoot"
+            paragraph "If you experiencing issues please enable logging to help troubleshoot"
             input "debugLogging", "bool", title: "Debug Logging...", required: false, defaultValue: false, submitOnChange: true
             href(name: "usersBal", title: "Last Event", required: false, page: "lastEvt", description: "view last event recieved by app")
             href(name: "P2STd", title: "Plex2SmartThings Setup Details", required: false, page: "P2ST", description: "information for setting up the Plex2SmartThings program if used")
@@ -133,13 +137,35 @@ def parentPage() {
 def childPage() {
     dynamicPage(name: "childPage", uninstall: true, install: true) {
         section() {
-            label title: "Enter Room Name", defaultValue: app.label, required: false
+            label title: "Enter Room Name", defaultValue: app.label, required: false, submitOnChange: true
         }
         section ("When this happens") {
             href(name: "pageWhenThis", title:"When Event Comes From", description: "", page: "pageWhenThis", required: false, image: "https://cdn0.iconfinder.com/data/icons/round-ui-icons/128/tick_blue.png")
             href(name: "pageDoThis", title:"Trigger these actions", description: "", page: "pageDoThis", required: false, image: "https://cdn0.iconfinder.com/data/icons/round-ui-icons/128/favourite_blue.png")
-            href(name: "pageMediaSettings", title:"With these settings", description: "", page: "pageMediaSettings", required: false, image: "https://cdn0.iconfinder.com/data/icons/round-ui-icons/128/setting_blue.png")
-          }
+            // href(name: "pageMediaSettings", title:"With these settings", description: "", page: "pageMediaSettings", required: false, image: "https://cdn0.iconfinder.com/data/icons/round-ui-icons/128/setting_blue.png")
+        }
+        section("Media Settings") {
+            input "bTreatTrailersAsPause1", "bool", title: "Use pause config for movie trailers", required: false, submitOnChange: true
+            input "stopDelay", "number", title: "Delay stop action", required: false, defaultValue: 0, submitOnChange: true
+            input "pauseDelay", "number", title: "Delay pause action", required: false, defaultValue: 0, submitOnChange: true
+        }
+        section("Plex Activity Type Restrictions:") {
+            input "mediaTypeOk", "enum", title: "Only for media types:", multiple: true, submitOnChange: true, required: false, options: ['movie', 'episode', 'clip', 'track']
+        }
+        section("Switch Restrictions:") {
+            input "disableSwOn", "capability.switch", title: "Switch to disable when On", required: false, multiple: false, submitOnChange: true
+            input "disableSwOff", "capability.switch", title: "Switch to disable when Off", required: false, multiple: false, submitOnChange: true
+        }
+        section("Illuminance Restrictions:") {
+            input "illumAbove", "capability.illuminanceMeasurement", title: "Illuminance >= to?", required: false, multiple: true, submitOnChange: true
+            if(illumAbove) input "illumAboveVal", type: "number", title: "Illuminance value", required: true, submitOnChange: true
+            input "illumBelow", "capability.illuminanceMeasurement", title: "Illuminance <= to?", required: false, multiple: true, submitOnChange: true
+            if(illumBelow) input "illumBelowVal", type: "number", title: "Illuminance value", required: true, submitOnChange: true
+        }
+        section("Mode Restrictions:") {
+            input "activeMode", "mode", title: "Only in these modes!", multiple: true, required: false, submitOnChange: true
+            input "inactiveMode", "mode", title: "Only when not in these modes!", multiple: true, required: false, submitOnChange: true
+        }
     }
 }
 
@@ -221,7 +247,7 @@ def pageDevDelete(params) {
 }
 
 def lastEvt() {
-    dynamicPage(name: "lastEvt", title: "Last Event", install: false, uninstall: false) {
+    return dynamicPage(name: "lastEvt", title: "Last Event", install: false, uninstall: false) {
         section(title: "Details of Last Event Recieved") {
             paragraph "$state.lastEvent"
         }
@@ -229,7 +255,7 @@ def lastEvt() {
 }
 
 def P2ST() {
-    dynamicPage(name: "P2ST", title: "Plex2SmartThings Information", install: false, uninstall: false) {
+    return dynamicPage(name: "P2ST", title: "Plex2SmartThings Information", install: false, uninstall: false) {
         section(title: "App ID") {
             paragraph "${app?.getId()}"
         }
@@ -301,7 +327,7 @@ def OnCommandRecieved() {
 }
 
 def StoreLastEvent(command, userName, playerName, playerIP, mediaType) {
-    state.lastEvent = " User Name: ${userName} \n Player Name: ${playerName} \n IP Address: ${playerIP} \n Command: ${command} \n Media Type: ${mediaType}"
+    state?.lastEvent = " User Name: ${userName} \n Player Name: ${playerName} \n IP Address: ${playerIP} \n Command: ${command} \n Media Type: ${mediaType}"
     return
 }
 
@@ -309,13 +335,13 @@ def StoreLastEvent(command, userName, playerName, playerIP, mediaType) {
 def pageWhenThis(){
     dynamicPage(name: "pageWhenThis", uninstall: false) {
         section("When Plex2SmartThings or Plex WebHook sends and event matching:") {
-            input(name: "playerA1", type: "text", title: "Player name, User or IP", required:false)
-            input(name: "playerB1", type: "text", title: "Player name, User or IP 2", required:false)
-            input(name: "matchBoth", type: "bool", title: "Trigger only if both the above are found", required: false)
+            input "playerA1", "text", title: "Player name, User or IP", required: false, submitOnChange: true
+            input "playerB1", "text", title: "Player name, User or IP 2", required: false, submitOnChange: true
+            input "matchBoth", "bool", title: "Trigger only if both the above are found", required: false, submitOnChange: true
             paragraph "The above are case sensitive, and IP can't be used for Plex WebHook"
         }
         section("Or when a media player device changes state:") {
-            input(name: "playerDT", type: "capability.musicPlayer", title: "ST Media Player Device", multiple: false, required:false)
+            input "playerDT", "capability.musicPlayer", title: "ST Media Player Device", multiple: false, required: false, submitOnChange: true
         }
         section("Notes"){
             paragraph "To identify player, you can use either Player Device Name, Username, IP address or * in order to match any player where using the Plex2SmartThings program on your computer. \n\nOr you can use a supported media player device type."
@@ -328,46 +354,46 @@ def pageDoThis(){
         section("Lights") {
             input "dimmers1", "capability.switchLevel", title: "Adjust level of these bulbs", multiple: true, required: false, submitOnChange: true
             input "hues1", "capability.colorControl", title: "Adjust level and color of these bulbs", multiple:true, required:false, submitOnChange: true
-            if(hues1||dimmers1) {
-            input(name: "iLevelOnPlay1", type: "number", title: "Level on Play", defaultValue:0)
-            input(name: "iLevelOnPause1", type: "number", title: "Level on Pause", defaultValue:30)
-            input(name: "iLevelOnStop1", type: "number", title: "Level on Stop", defaultValue:100)
+            if(settings?.hues1 || settings?.dimmers1) {
+                input(name: "iLevelOnPlay1", type: "number", title: "Level on Play", defaultValue:0, submitOnChange: true)
+                input(name: "iLevelOnPause1", type: "number", title: "Level on Pause", defaultValue:30, submitOnChange: true)
+                input(name: "iLevelOnStop1", type: "number", title: "Level on Stop", defaultValue:100, submitOnChange: true)
             }
-            if(hues1) {
+            if(settings?.hues1) {
                 input "colorOnPlay", "enum", title: "Hue Bulbs > Color On Play", required: false, multiple: false, submitOnChange: true, options: ["Soft White", "White", "Daylight", "Warm White", "Red", "Green", "Blue", "Yellow", "Orange", "Purple", "Pink"]
                 input "colorOnPause", "enum", title: "Hue Bulbs > Color On Pause", required: false, multiple: false, submitOnChange: true, options: ["Soft White", "White", "Daylight", "Warm White", "Red", "Green", "Blue", "Yellow", "Orange", "Purple", "Pink"]
                 input "colorOnStop", "enum", title: "Hue Bulbs > Color On Stop", required: false, multiple: false, submitOnChange: true, options: ["Soft White", "White", "Daylight", "Warm White", "Red", "Green", "Blue", "Yellow", "Orange", "Purple", "Pink"]
-                input(name: "tempOnPlay", description: "1000..9999", type: "number", range: "1000..9999", title: "Color Temperature on Play (\u00B0K)", required: false)
-                input(name: "tempOnPause", description: "1000..9999", type: "number", range: "1000..9999", title: "Color Temperature on Pause (\u00B0K)", required: false)
-                input(name: "tempOnStop", description: "1000..9999", type: "number", range: "1000..9999", title: "Color Temperature on Stop (\u00B0K)", required: false)
+                input(name: "tempOnPlay", description: "1000..9999", type: "number", range: "1000..9999", title: "Color Temperature on Play (\u00B0K)", required: false, submitOnChange: true)
+                input(name: "tempOnPause", description: "1000..9999", type: "number", range: "1000..9999", title: "Color Temperature on Pause (\u00B0K)", required: false, submitOnChange: true)
+                input(name: "tempOnStop", description: "1000..9999", type: "number", range: "1000..9999", title: "Color Temperature on Stop (\u00B0K)", required: false, submitOnChange: true)
             }
-            input(name: "bDimOnlyIfOn1", type: "bool", title: "Dim bulbs only if they're already on", required: false)
+            input(name: "bDimOnlyIfOn1", type: "bool", title: "Dim bulbs only if they're already on", required: false, submitOnChange: true)
         }
         section("Switches") {
-            input "switches2", "capability.switch", title:"Switches On when Playing", multiple: true, required: false
-            input "switches1", "capability.switch", title:"Switches Off when Playing", multiple: true, required: false
-            input(name: "bReturnState1", type: "bool", title: "Switches return to original state when Stopped", required: false)
-            input(name: "bSwitchOffOnPause1", type: "bool", title: "Switches use Play config when Paused", required: false)
-            input(name: "switchOnPlay", type: "bool", title: "Switches only change on 'Play'", required: false)
+            input "switches2", "capability.switch", title:"Switches On when Playing", multiple: true, required: false, submitOnChange: true
+            input "switches1", "capability.switch", title:"Switches Off when Playing", multiple: true, required: false, submitOnChange: true
+            input "bReturnState1", "bool", title: "Switches return to original state when Stopped", required: false, submitOnChange: true
+            input "bSwitchOffOnPause1", "bool", title: "Switches use Play config when Paused", required: false, submitOnChange: true
+            input "switchOnPlay", "bool", title: "Switches only change on 'Play'", required: false, submitOnChange: true
             paragraph "The below switches do not toggle off when state becomes inactive, ideal for tiggering external App scenes"
-            input "mSwitchPlay", "capability.switch", title:"Momentary switch on Play", multiple: true, required: false
-            input "mSwitchPause", "capability.switch", title:"Momentary switch on Pause", multiple: true, required: false
-            input "mSwitchStop", "capability.switch", title:"Momentary switch on Stop", multiple: true, required: false
+            input "mSwitchPlay", "capability.switch", title:"Momentary switch on Play", multiple: true, required: false, submitOnChange: true
+            input "mSwitchPause", "capability.switch", title:"Momentary switch on Pause", multiple: true, required: false, submitOnChange: true
+            input "mSwitchStop", "capability.switch", title:"Momentary switch on Stop", multiple: true, required: false, submitOnChange: true
 
         }
         section("Modes") {
-            input "playMode1", "mode", title: "Mode when playing", required: false
-            input "pauseMode1", "mode", title: "Mode when paused", required: false
-            input "stopMode1", "mode", title: "Mode when stopped", required: false
+            input "playMode1", "mode", title: "Mode when playing", required: false, submitOnChange: true
+            input "pauseMode1", "mode", title: "Mode when paused", required: false, submitOnChange: true
+            input "stopMode1", "mode", title: "Mode when stopped", required: false, submitOnChange: true
         }
         section("Routines") {
             def actions = location?.helloHome?.getPhrases()*.label?.sort()
-            input "playRoutine", "enum", title: "Routine when playing", required: false, options: actions
-            input "pauseRoutine", "enum", title: "Routine when paused", required: false, options: actions
-            input "stopRoutine", "enum", title: "Routine when stopped", required: false, options: actions
+            input "playRoutine", "enum", title: "Routine when playing", required: false, options: actions, submitOnChange: true
+            input "pauseRoutine", "enum", title: "Routine when paused", required: false, options: actions, submitOnChange: true
+            input "stopRoutine", "enum", title: "Routine when stopped", required: false, options: actions, submitOnChange: true
         }
         section("Update This Device"){
-            input(name: "PlexPlusDT", type: "capability.musicPlayer", title: "Update This Device", description: "Use a Plex Plus or HT Custom Device", multiple: false, state: null, required:false)
+            input "PlexPlusDT", "capability.musicPlayer", title: "Update This Device", description: "Use a Plex Plus or HT Custom Device", multiple: false, state: null, required: false, submitOnChange: true
         }
     }
 }
@@ -375,15 +401,26 @@ def pageDoThis(){
 def pageMediaSettings(){
     dynamicPage(name: "pageMediaSettings", uninstall: false) {
         section("Media Settings") {
-            input(name: "bTreatTrailersAsPause1", type: "bool", title: "Use pause config for movie trailers", required: false)
-            input(name: "stopDelay", type: "number", title: "Delay stop action", required: false, defaultValue: 0)
-            input(name: "pauseDelay", type: "number", title: "Delay pause action", required: false, defaultValue: 0)
+            input "bTreatTrailersAsPause1", "bool", title: "Use pause config for movie trailers", required: false, submitOnChange: true
+            input "stopDelay", "number", title: "Delay stop action", required: false, defaultValue: 0, submitOnChange: true
+            input "pauseDelay", "number", title: "Delay pause action", required: false, defaultValue: 0, submitOnChange: true
         }
-        section("Restrictions") {
+        section("Plex Activity Type Restrictions:") {
             input "mediaTypeOk", "enum", title: "Only for media types:", multiple: true, submitOnChange: true, required: false, options: ['movie', 'episode', 'clip', 'track']
-            input "disableSwOn", "capability.switch", title: "Switch to disable when On", required: false, multiple: false
-            input "disableSwOff", "capability.switch", title: "Switch to disable when Off", required: false, multiple: false
-            input "activeMode", "mode", title: "Only run in selected modes", multiple: true, required:false
+        }
+        section("Switch Restrictions:") {
+            input "disableSwOn", "capability.switch", title: "Switch to disable when On", required: false, multiple: false, submitOnChange: true
+            input "disableSwOff", "capability.switch", title: "Switch to disable when Off", required: false, multiple: false, submitOnChange: true
+        }
+        section("Illuminance Restrictions:") {
+            input "illumAbove", "capability.illuminanceMeasurement", title: "Illuminance Greater Than or Equal To?", required: false, multiple: true, submitOnChange: true
+            if(illumAbove) input "illumAboveVal", type: "number", title: "Illuminance Value", required: true, submitOnChange: true
+            input "illumBelow", "capability.illuminanceMeasurement", title: "Illuminance Less Than or Equal To?", required: false, multiple: true, submitOnChange: true
+            if(illumBelow) input "illumBelowVal", type: "number", title: "Illuminance Value", required: true, submitOnChange: true
+        }
+        section("Mode Restrictions:") {
+            input "activeMode", "mode", title: "Only run in selected modes", multiple: true, required: false, submitOnChange: true
+            input "inactiveMode", "mode", title: "Only run when not in selected modes", multiple: true, required: false, submitOnChange: true
         }
     }
 }
@@ -451,8 +488,10 @@ def AppCommandRecieved(command, userName, playerName, playerIP, mediaType) {
     if (disableSwOff != null) {
         if(disableSwOff?.currentSwitch == "off") { logWriter ("Disabled via switch off"); return }
     }
-    if (activeMode != null && !activeMode?.contains(location?.mode)) { logWriter ("Disabled via invalid mode"); return }
-
+    if (activeMode && !activeMode?.contains(location?.mode)) { logWriter ("Disabled via invalid mode"); return }
+    if (inactiveMode && !inactiveMode?.contains(location?.mode)) { logWriter ("Disabled via invalid mode"); return }
+    if (illumAbove && illumAboveVal && !illumAbove?.currentValue("illuminance") >= illumAboveVal) { logWriter ("Disabled via invalid Illuminance level"); return }
+    if (illumBelow && illumBelowVal && !illumBelow?.currentValue("illuminance") >= illumBelowVal) { logWriter ("Disabled via invalid Illuminance level"); return }
 // Check if Media Type is correct
     if(mediaTypeOk){
         def mediaTypeFound = mediaTypeOk?.find { item -> item == mediaType}
@@ -468,28 +507,27 @@ def AppCommandRecieved(command, userName, playerName, playerIP, mediaType) {
 
 // Send media type to Plex Plus Device Type if configured.
     try { settings.PlexPlusDT?.playbackType("${mediaType}") }
-    catch (Exception e) {log.info "Playback Type Not Supported: $e"}
+    catch (ex) { log.error "Playback Type Not Supported: ${ex}" }
 // Play, Pause or Stop
     if (command == "onplay") {
         logWriter ("Playing")
         PlayCommand()
-    }
-    else if (command == "onpause") {
+    } else if (command == "onpause") {
         logWriter ("Paused")
-        if(!settings?.pauseDelay || pauseDelay == "0"){
+        if(!settings?.pauseDelay || settings?.pauseDelay == 0){
             PauseCommand()
-        }else{
+        } else {
             logWriter ("Pause Action Delay")
-            runIn(settings?.pauseDelay.value, PauseCommand)
+            runIn(settings?.pauseDelay, "PauseCommand")
         }
     }
     else if (command == "onstop") {
         logWriter ("Stopped")
-        if(!settings?.stopDelay || stopDelay == "0"){
+        if(!settings?.stopDelay || settings?.stopDelay == 0){
             StopCommand()
-        }else{
-               logWriter ("Stop Action Delay")
-            runIn(settings?.stopDelay.value, StopCommand)
+        } else {
+            logWriter ("Stop Action Delay")
+            runIn(settings?.stopDelay, "StopCommand")
         }
     }
 }
@@ -498,7 +536,7 @@ def PlayCommand(){
     if(!state.catcherRunning){
         catchState("switches1")
         catchState("switches2")
-        state.catcherRunning = true
+        state?.catcherRunning = true
     }
     if(settings?.playMode1){setLocationMode(playMode1)}
     SetLevels(iLevelOnPlay1, colorOnPlay, tempOnPlay)
@@ -515,16 +553,16 @@ def PauseCommand(){
     PlexPlusDT?.pause()
     if(pauseRoutine) { location.helloHome?.execute(pauseRoutine) }
     if(settings?.bSwitchOffOnPause1) {
-           SetSwitchesOff()
+        SetSwitchesOff()
     } else {
-           if(state.catcherRunning && settings?.bReturnState1){
-               returnToState("switches1")
-               returnToState("switches2")
-               state.catcherRunning = false
-           }else{
-               SetSwitchesOn()
-               state.catcherRunning = false
-           }
+        if(state.catcherRunning && settings?.bReturnState1){
+            returnToState("switches1")
+            returnToState("switches2")
+            state?.catcherRunning = false
+        }else{
+            SetSwitchesOn()
+            state?.catcherRunning = false
+        }
     }
 }
 
@@ -535,11 +573,11 @@ def StopCommand(){
     mSwitchStop?.on()
     PlexPlusDT?.stop()
     if(stopRoutine) { location.helloHome?.execute(stopRoutine) }
-    if(state.catcherRunning && settings?.bReturnState1) {
+    if(state?.catcherRunning && settings?.bReturnState1) {
         returnToState("switches1")
         returnToState("switches2")
         state?.catcherRunning = false
-    }else{
+    } else {
         SetSwitchesOn()
         state?.catcherRunning = false
     }
@@ -604,13 +642,13 @@ def SetLevels(level, acolor, temp) {
 
         if (settings?.bDimOnlyIfOn1){
             if(acolor != null) {
-                hues1?.each { hue -> if ("on" == hue.currentSwitch) 	{ hue.setColor([hue: hueColor, saturation: saturation, level: level]) } }
+                hues1?.each { hue -> if ("on" == hue.currentSwitch)     { hue.setColor([hue: hueColor, saturation: saturation, level: level]) } }
             } else if(temp != null) {
-                hues1?.each { hue -> if ("on" == hue.currentSwitch) 	{ hue.setColorTemperature(temp) } }
+                hues1?.each { hue -> if ("on" == hue.currentSwitch)     { hue.setColorTemperature(temp) } }
             } else {
-                hues1?.each { hue -> if ("on" == hue.currentSwitch) 	{ hue.setLevel(level) } }
+                hues1?.each { hue -> if ("on" == hue.currentSwitch)     { hue.setLevel(level) } }
             }
-            dimmers1?.each 	{ bulb -> if ("on" == bulb.currentSwitch) 	{ bulb.setLevel(level) } }
+            dimmers1?.each 	{ bulb -> if ("on" == bulb.currentSwitch)   { bulb.setLevel(level) } }
         } else {
             // color takes priority over temperature, dimmers will still set temperature if available
             if(acolor != null) {
@@ -623,20 +661,20 @@ def SetLevels(level, acolor, temp) {
 
 //Save state
 private catchState(switches) {
-        settings?."${switches}"?.each { switcher -> state."${switcher.id}State" = switcher.currentValue("switch")
-            logWriter (switcher.currentValue("switch"))
-        }
+    settings?."${switches}"?.each { switcher -> state?."${switcher.id}State" = switcher?.currentValue("switch")
+        logWriter(switcher?.currentValue("switch"))
+    }
 }
 
 //Return to state
 private returnToState(switches) {
     settings."${switches}"?.each { switcher ->
-        if(state."${switcher.id}State" == "on") {switcher?.on()}
-        if(state."${switcher.id}State" == "off") {switcher?.off()}
+        if(state?."${switcher.id}State" == "on") { switcher?.on() }
+        if(state?."${switcher.id}State" == "off") { switcher?.off() }
     }
 }
 
-//// GENERIC CODE
+// GENERIC CODE
 private def logWriter(value) {
     if(parent) {
         if(parent?.debugLogging) { log.debug "PlexPlus [${app.label}] >> ${value}" }
